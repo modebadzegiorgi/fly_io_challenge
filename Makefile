@@ -10,5 +10,8 @@ broadcast:
 	cd broadcast && go install .
 	./maelstrom/maelstrom  test -w broadcast --bin /go/bin/broadcast --node-count 5 --time-limit 20 --rate 10
 
+counter:
+	cd counter && go install .
+	./maelstrom/maelstrom  test -w g-counter --bin /go/bin/counter --node-count 2 --rate 100 --time-limit 2 --nemesis partition
 
-.PHONY: echo unique-ids broadcast
+.PHONY: echo unique-ids broadcast counter
