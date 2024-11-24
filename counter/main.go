@@ -8,17 +8,14 @@ import (
 	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
 )
 
-const key = "Total"
-
 func main() {
 
 	n := maelstrom.NewNode()
 	kv := maelstrom.NewSeqKV(n)
 
-	key := "total" // Global key for consistency
-
-	// Handle locally initiated add requests
 	n.Handle("add", func(msg maelstrom.Message) error {
+		key := n.ID()
+
 		ctx := context.Background()
 		var body map[string]any
 		if err := json.Unmarshal(msg.Body, &body); err != nil {
@@ -32,43 +29,13 @@ func main() {
 			currentTotal = 0
 		}
 		kv.CompareAndSwap(ctx, key, currentTotal, currentTotal+delta, true)
-
-		for _, id := range n.NodeIDs() {
-			if id == n.ID() {
-				continue
-			}
-			n.Send(id, map[string]any{
-				"type":  "broadcast_add",
-				"delta": delta,
-			})
-		}
-
+		// Reply to the client
 		body["type"] = "add_ok"
 		delete(body, "delta")
 
 		return n.Reply(msg, body)
 	})
 
-	n.Handle("broadcast_add", func(msg maelstrom.Message) error {
-		ctx := context.Background()
-		var body map[string]any
-		if err := json.Unmarshal(msg.Body, &body); err != nil {
-			return err
-		}
-
-		delta := int(body["delta"].(float64))
-
-		// Update the local KV store
-		currentTotal, err := kv.ReadInt(ctx, key)
-		if err != nil {
-			currentTotal = 0
-		}
-		kv.CompareAndSwap(ctx, key, currentTotal, currentTotal+delta, true)
-
-		return nil // No reply needed
-	})
-
-	// Handle read requests
 	n.Handle("read", func(msg maelstrom.Message) error {
 		ctx := context.Background()
 		var body map[string]any
@@ -77,9 +44,14 @@ func main() {
 			return err
 		}
 
-		val, _ := kv.ReadInt(ctx, key)
+		total := 0
+		for _, id := range n.NodeIDs() {
+			val, _ := kv.ReadInt(ctx, id)
+			total += val
+		}
+
 		body["type"] = "read_ok"
-		body["value"] = val
+		body["value"] = total
 
 		return n.Reply(msg, body)
 	})
